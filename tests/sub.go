@@ -2,7 +2,7 @@ package main
 
 import (
   "fmt"
-  "pubsub/go/client"
+  "github.com/johnietre/pubsub/client"
 )
 
 func main() {

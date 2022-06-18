@@ -4,7 +4,7 @@ import (
   "strconv"
   "time"
 
-  "pubsub/go/client"
+  "github.com/johnietre/pubsub/client"
 )
 
 var dur = time.Second * 5

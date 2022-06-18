@@ -1,12 +1,13 @@
 package server
 
 import (
+  "io"
 	"log"
 	"net"
 	"strings"
 
-	"pubsub/go/internal/common"
-  clientpkg "pubsub/go/client"
+	"github.com/johnietre/pubsub/common"
+  clientpkg "github.com/johnietre/pubsub/client"
 )
 
 const (
@@ -84,18 +85,23 @@ func (s *Server) handle(c net.Conn) {
     initial := make([]byte, 5)
     n, err := c.Read(initial[:])
 		if err != nil {
+      if err != io.EOF {
+        s.errorLog.Println(err)
+      }
 			return
 		}
 		if n != 5 {
 			client.sendMsg(common.MsgTypeErr, common.ErrBadMsg.Error())
 			continue
 		}
-    l := common.Get4(initial[1:])
-    buf := make([]byte, l)
-    n, err = c.Read(buf)
-		if err != nil {
-			return
-		}
+    n = int(common.Get4(initial[1:]))
+    buf := make([]byte, n)
+    if n != 0 {
+      n, err = c.Read(buf)
+      if err != nil {
+        return
+      }
+    }
     mt, msg, err := common.DecodeMsg(append(initial, buf[:n]...))
 		if err != nil {
 			client.sendMsg(common.MsgTypeErr, err.Error())
@@ -112,6 +118,8 @@ func (s *Server) handle(c net.Conn) {
 			client.newChan(msg)
 		case common.MsgTypeDelChan:
 			client.delChan(msg)
+    case common.MsgTypeChanNames:
+      client.chanNames()
 		default:
       client.sendMsg(common.MsgTypeErr, common.ErrBadMsg.Error())
 		}
@@ -248,6 +256,15 @@ func (c *Client) delChan(msg string) {
 		return
 	}
 	c.sendMsg(common.MsgTypeOk, "")
+}
+
+func (c *Client) chanNames() {
+  var names []string
+  c.server.channels.Range(func(name string, _ *Channel) bool {
+    names = append(names, name)
+    return true
+  })
+  c.sendMsg(common.MsgTypeChanNames, strings.Join(names, "\n"))
 }
 
 // Returns false if the channel doesn't exist

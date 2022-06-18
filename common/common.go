@@ -14,6 +14,7 @@ const (
 	MsgTypePub
   MsgTypeNewChan
   MsgTypeDelChan
+  MsgTypeChanNames
   MsgTypeOk
 )
 
@@ -132,7 +133,7 @@ func (s *Set[T]) Contains(item T) bool {
 // that returns whether the iterations should stop
 func (s *Set[T]) Range(f func(T) bool) {
   for item := range s.m {
-    if f(item) {
+    if !f(item) {
       return
     }
   }

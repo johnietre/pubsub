@@ -5,7 +5,7 @@ import (
   "strconv"
   "time"
 
-  psserver "pubsub/go/server"
+  psserver "github.com/johnietre/pubsub/server"
 )
 
 var dur = time.Second * 5
@@ -34,13 +34,26 @@ func main() {
     }
   }
   client.Pub("done", "chan3", "chan5", "chan15", "chann")
-  time.Sleep(time.Second * 10)
+  time.Sleep(dur)
 }
 
 func goSub() {
   client := server.NewClient(100, false)
   defer client.Close()
   client.Sub("chan3", "chan5", "chan15", "chann")
+
+  ct, err := client.RefreshAllChanNames()
+  if err != nil {
+    panic(err)
+  }
+  if !client.WaitForChansRefresh(ct, 5) {
+    panic("no refresh")
+  }
+  client.GetAllChanNames().Range(func(name string) bool {
+    fmt.Printf("Chan name: %s\n", name)
+    return true
+  })
+
   for i := 0; i < 100; i++ {
     name, msg, _, err := client.Recv(true)
     if err != nil {

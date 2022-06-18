@@ -1,7 +1,7 @@
 package main
 
 import (
-  "pubsub/go/server"
+  "github.com/johnietre/pubsub/server"
 )
 
 func main() {

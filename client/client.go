@@ -4,9 +4,11 @@ import (
   "errors"
   "net"
   "strings"
+  "sync"
   "sync/atomic"
+  "time"
 
-  "pubsub/go/internal/common"
+  "github.com/johnietre/pubsub/common"
 )
 
 var (
@@ -22,6 +24,12 @@ type Client struct {
   conn net.Conn
   subs *common.SyncMap[string, *Channel]
   pubs *common.SyncMap[string, *Channel]
+  allChanNames *common.SyncSet[string]
+  // Only used to lock writes to and changing the actual value of allChanNames
+  // Writes are locked even though the set is thread-safe so that if two
+  // 2 simultaneous refreshes don't conflict with each other
+  allChansMtx sync.Mutex
+  lastChansRefresh int64
 
   msgQueueLen uint
   discardOnFull bool
@@ -36,6 +44,7 @@ func NewClient(addr string, queueLen uint, discard bool) (*Client, error) {
     conn: conn,
     subs: common.NewSyncMap[string, *Channel](),
     pubs: common.NewSyncMap[string, *Channel](),
+    allChanNames: common.NewSyncSet[string](),
     msgQueueLen: queueLen,
     discardOnFull: discard,
   }
@@ -48,6 +57,7 @@ func NewClientFromConn(conn net.Conn, queueLen uint, discard bool) *Client {
     conn: conn,
     subs: common.NewSyncMap[string, *Channel](),
     pubs: common.NewSyncMap[string, *Channel](),
+    allChanNames: common.NewSyncSet[string](),
     msgQueueLen: queueLen,
     discardOnFull: discard,
   }
@@ -124,6 +134,13 @@ func (c *Client) GetChan(name string) (*Channel, bool) {
 
 func (c *Client) GetSubs(names ...string) []*Channel {
   var chans []*Channel
+  if len(names) == 0 {
+    c.subs.Range(func(_ string, ch *Channel) bool {
+      chans = append(chans, ch)
+      return true
+    })
+    return chans
+  }
   for _, name := range names {
     if ch, loaded := c.subs.Load(name); loaded {
       chans = append(chans, ch)
@@ -134,6 +151,13 @@ func (c *Client) GetSubs(names ...string) []*Channel {
 
 func (c *Client) GetPubs(names ...string) []*Channel {
   var chans []*Channel
+  if len(names) == 0 {
+    c.pubs.Range(func(_ string, ch *Channel) bool {
+      chans = append(chans, ch)
+      return true
+    })
+    return chans
+  }
   for _, name := range names {
     if ch, loaded := c.pubs.Load(name); loaded {
       chans = append(chans, ch)
@@ -146,6 +170,17 @@ func (c *Client) GetPubs(names ...string) []*Channel {
 // and pub versions (both are returned)
 func (c *Client) GetChans(names ...string) []*Channel {
   var chans []*Channel
+  if len(names) == 0 {
+    c.subs.Range(func(_ string, ch *Channel) bool {
+      chans = append(chans, ch)
+      return true
+    })
+    c.pubs.Range(func(_ string, ch *Channel) bool {
+      chans = append(chans, ch)
+      return true
+    })
+    return chans
+  }
   for _, name := range names {
     if ch, loaded := c.subs.Load(name); loaded {
       chans = append(chans, ch)
@@ -199,6 +234,44 @@ func (c *Client) Close() error {
     return true
   })
   return c.conn.Close()
+}
+
+// Returns the current time to be passed to the WaitForRefresh function
+func (c *Client) RefreshAllChanNames() (int64, error) {
+  err := c.sendMsg(common.MsgTypeChanNames, "")
+  if err != nil {
+    return 0, err
+  }
+  return time.Now().UnixNano(), nil
+}
+
+// Takes a timeout as a time in seconds. Set timeout as -1 for no timeout
+// Returns true if the last refresh time was after the given timestamp t
+func (c *Client) WaitForChansRefresh(t int64, timeout time.Duration) bool {
+  var end time.Time
+  if timeout > 0 {
+    end = time.Now().Add(timeout * time.Second)
+  } else {
+    end = time.Now().AddDate(100, 0, 0)
+  }
+  for time.Now().Before(end) {
+   if atomic.LoadInt64(&c.lastChansRefresh) > t {
+     return true
+   }
+  }
+  return atomic.LoadInt64(&c.lastChansRefresh) > t
+}
+
+func (c *Client) GetAllChanNames() *common.SyncSet[string] {
+  return c.allChanNames
+}
+
+// ClearServerChans deletes the list of chan names held by the client and
+// creates a new one. All prev distributed refs will no longer be updated
+func (c *Client) ClearServerChans() {
+  c.allChansMtx.Lock()
+  c.allChanNames = common.NewSyncSet[string]()
+  c.allChansMtx.Unlock()
 }
 
 func (c *Client) sendMsg(mt common.MsgType, msg string) error {
@@ -287,6 +360,28 @@ func (c *Client) recv() {
       if channel, loaded := c.subs.LoadAndDelete(msg); loaded {
         channel.err.Store(ErrChanClosed)
       }
+    case common.MsgTypeChanNames:
+      // The entire process is locked since it's possible that 1 refresh comes
+      // with a long list of names than another with a short list. Without all
+      // being locked, the new short one may get overwritten by the outdated
+      // long one
+      c.allChansMtx.Lock()
+      set := common.NewSet[string]()
+      for _, name := range strings.Split(msg, "\n") {
+        set.Insert(name)
+      }
+      set.Range(func(name string) bool {
+        c.allChanNames.Insert(name)
+        return true
+      })
+      c.allChanNames.Range(func(name string) bool {
+        if !set.Contains(name) {
+          c.allChanNames.Remove(name)
+        }
+        return true
+      })
+      atomic.StoreInt64(&c.lastChansRefresh, time.Now().UnixNano())
+      c.allChansMtx.Unlock()
     }
   }
 }
