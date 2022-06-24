@@ -5,7 +5,7 @@ import (
 	"log"
 	"net"
 	"strings"
-  "sync/atomic"
+	"sync/atomic"
 
 	"github.com/johnietre/pubsub/utils"
 )
@@ -135,8 +135,8 @@ func (s *Server) handle(c net.Conn) {
 			client.unsub(msg)
 		case utils.MsgTypeNewChan:
 			client.newChan(msg)
-    case utils.MsgTypeNewMultiChan:
-      client.newMultiChan(msg)
+		case utils.MsgTypeNewMultiChan:
+			client.newMultiChan(msg)
 		case utils.MsgTypeDelChan:
 			client.delChan(msg)
 		case utils.MsgTypeChanNames:
@@ -157,11 +157,11 @@ func (s *Server) newServerClient(conn net.Conn) *serverClient {
 }
 
 func (s *Server) newServerChannel(name string) *serverChannel {
-  return &serverChannel{
-    name: name,
-    server: s,
-    subs: utils.NewSyncSet[*serverClient](),
-  }
+	return &serverChannel{
+		name:   name,
+		server: s,
+		subs:   utils.NewSyncSet[*serverClient](),
+	}
 }
 
 type serverClient struct {
@@ -208,7 +208,7 @@ func (c *serverClient) publish(msg string) {
 
 func (c *serverClient) sub(msg string) {
 	var fails []string
-  names := strings.Split(msg, "\n")
+	names := strings.Split(msg, "\n")
 	for _, name := range names {
 		if !c.addSub(name) {
 			fails = append(fails, name)
@@ -261,22 +261,22 @@ func (c *serverClient) newMultiChan(msg string) {
 		if c.pubs.Contains(name) {
 			continue
 		}
-    channel := c.server.newServerChannel(name)
-    channel.numPubs = 1
-RetryMulti:
-    if channel, loaded := c.server.channels.LoadOrStore(name, channel); loaded {
-      // Check the state of the channel
-      n := atomic.LoadInt32(&channel.numPubs)
-      // If -1, the channel is single pub
-      if n == -1 {
-        fails = append(fails, name)
-        continue
-      }
-      // If n is less than 1 or the new numPubs is less than 2, the channel has been deleted
-      if n < 1 || atomic.AddInt32(&channel.numPubs, 1) < 2 {
-        // Try again
-        goto RetryMulti
-      }
+		channel := c.server.newServerChannel(name)
+		channel.numPubs = 1
+	RetryMulti:
+		if channel, loaded := c.server.channels.LoadOrStore(name, channel); loaded {
+			// Check the state of the channel
+			n := atomic.LoadInt32(&channel.numPubs)
+			// If -1, the channel is single pub
+			if n == -1 {
+				fails = append(fails, name)
+				continue
+			}
+			// If n is less than 1 or the new numPubs is less than 2, the channel has been deleted
+			if n < 1 || atomic.AddInt32(&channel.numPubs, 1) < 2 {
+				// Try again
+				goto RetryMulti
+			}
 		}
 		c.pubs.Insert(name)
 	}
@@ -290,10 +290,10 @@ RetryMulti:
 func (c *serverClient) delChan(msg string) {
 	if msg == "" {
 		c.pubs.Range(func(name string) bool {
-      if channel, loaded := c.server.channels.Load(name); loaded {
-        channel.del()
-      }
-      c.pubs.Remove(name)
+			if channel, loaded := c.server.channels.Load(name); loaded {
+				channel.del()
+			}
+			c.pubs.Remove(name)
 			return true
 		})
 		c.sendMsg(utils.MsgTypeOk, "")
@@ -309,7 +309,7 @@ func (c *serverClient) delChan(msg string) {
 		}
 		// TODO: Possibly send error if channel doesn't exist
 		if channel, loaded := c.server.channels.Load(name); loaded {
-      channel.del()
+			channel.del()
 		}
 		c.pubs.Remove(name)
 	}
@@ -344,12 +344,12 @@ func (c *serverClient) addSub(s string) bool {
 		c.subs.Remove(s)
 		return false
 	}
-  // Add the client to the channel's list, removing it from the client's list
-  // if it no longer exists
+	// Add the client to the channel's list, removing it from the client's list
+	// if it no longer exists
 	if !channel.addServerClient(c) {
-    c.subs.Remove(s)
-    return false
-  }
+		c.subs.Remove(s)
+		return false
+	}
 	return true
 }
 
@@ -366,27 +366,27 @@ func (c *serverClient) delSub(s string) bool {
 }
 
 func (c *serverClient) sendMsg(mt utils.MsgType, msg string) error {
-  _, err := c.conn.Write(utils.EncodeMsg(mt, msg))
-  return err
+	_, err := c.conn.Write(utils.EncodeMsg(mt, msg))
+	return err
 }
 
 type serverChannel struct {
-	name string
-  server *Server
-	subs *utils.SyncSet[*serverClient]
-  // The number of publishers the channel has.
-  // This is -1 if the channel only has 1 publisher and > 0 if multiple.
-  // It's -2 if the channel is deleted
-  // TODO: Possibly remove the -2 state conditon
-  numPubs int32
+	name   string
+	server *Server
+	subs   *utils.SyncSet[*serverClient]
+	// The number of publishers the channel has.
+	// This is -1 if the channel only has 1 publisher and > 0 if multiple.
+	// It's -2 if the channel is deleted
+	// TODO: Possibly remove the -2 state conditon
+	numPubs int32
 }
 
 // Returns true if the client was added
 func (ch *serverChannel) addServerClient(c *serverClient) bool {
 	ch.subs.Insert(c)
-  // Check to see if the channel has been deleted
-  n := atomic.LoadInt32(&ch.numPubs)
-  return n == -2 || n == 0
+	// Check to see if the channel has been deleted
+	n := atomic.LoadInt32(&ch.numPubs)
+	return n == -2 || n == 0
 }
 
 func (ch *serverChannel) delServerClient(c *serverClient) {
@@ -403,18 +403,18 @@ func (ch *serverChannel) publish(msg string) {
 // Returns the decremented numPubs value
 // TODO: The return unneed right now
 func (ch *serverChannel) del() int32 {
-  // Return if the channel is multipub and there are still publishers
-  n := atomic.AddInt32(&ch.numPubs, -1)
-  if n > 0 {
-    return n
-  }
-  atomic.StoreInt32(&ch.numPubs, -2)
-  ch.server.channels.Delete(ch.name)
+	// Return if the channel is multipub and there are still publishers
+	n := atomic.AddInt32(&ch.numPubs, -1)
+	if n > 0 {
+		return n
+	}
+	atomic.StoreInt32(&ch.numPubs, -2)
+	ch.server.channels.Delete(ch.name)
 	ch.subs.Range(func(c *serverClient) bool {
-    c.subs.Remove(ch.name)
-    c.sendMsg(utils.MsgTypeDelChan, ch.name)
+		c.subs.Remove(ch.name)
+		c.sendMsg(utils.MsgTypeDelChan, ch.name)
 		return true
 	})
-  // Delete the channel from the servers list
-  return -2
+	// Delete the channel from the servers list
+	return -2
 }

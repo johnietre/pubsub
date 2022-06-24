@@ -3,7 +3,7 @@ package pubsub
 
 import (
 	"errors"
-  "io"
+	"io"
 	"net"
 	"strings"
 	"sync"
@@ -37,7 +37,7 @@ type Client struct {
 	subs         *utils.SyncMap[string, *Channel]
 	pubs         *utils.SyncMap[string, *Channel]
 	allChanNames *utils.SyncSet[string]
-  // Used to lock when updating names
+	// Used to lock when updating names
 	allChansMtx      sync.Mutex
 	lastChansRefresh int64
 
@@ -144,7 +144,7 @@ func (c *Client) NewMultiChan(names ...string) error {
 	for _, name := range names {
 		c.pubs.LoadOrStore(name, c.newChannel(name, c.msgQueueLen, true))
 	}
-  return nil
+	return nil
 }
 
 // DelChan deletes a channel the client previously created
@@ -423,7 +423,7 @@ func (c *Client) recv() {
 				channel.err.Store(ErrChanClosed)
 			}
 		case utils.MsgTypeChanNames:
-      // Needs to be locked in case there's a call to clear the names
+			// Needs to be locked in case there's a call to clear the names
 			c.allChansMtx.Lock()
 			set := utils.NewSet[string]()
 			for _, name := range strings.Split(msg, "\n") {
@@ -441,7 +441,7 @@ func (c *Client) recv() {
 			})
 			atomic.StoreInt64(&c.lastChansRefresh, time.Now().UnixNano())
 			c.allChansMtx.Unlock()
-    default:
+		default:
 		}
 	}
 }
@@ -500,7 +500,7 @@ func (ch *Channel) Recv(blocking bool) (string, bool, error) {
 		default:
 			err := ch.err.Load()
 			if err != nil {
-        ch.client.subs.Delete(ch.name)
+				ch.client.subs.Delete(ch.name)
 				return "", false, err.(error)
 			}
 		}
@@ -513,7 +513,7 @@ func (ch *Channel) Recv(blocking bool) (string, bool, error) {
 		default:
 			err := ch.err.Load()
 			if err != nil {
-        ch.client.subs.Delete(ch.name)
+				ch.client.subs.Delete(ch.name)
 				return "", false, err.(error)
 			}
 		}
