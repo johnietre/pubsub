@@ -5,12 +5,14 @@ import (
   "strconv"
   "time"
 
-  psserver "github.com/johnietre/pubsub/server"
+  //psserver "github.com/johnietre/pubsub/server"
+  "github.com/johnietre/pubsub"
 )
 
 var dur = time.Second * 5
 
-var server = psserver.NewLocalServer()
+//var server = psserver.NewLocalServer()
+var server = pubsub.NewLocalServer()
 
 func main() {
   client := server.NewClient(5, false)

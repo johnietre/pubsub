@@ -1,4 +1,4 @@
-package common
+package utils
 
 import (
   "errors"
@@ -13,6 +13,7 @@ const (
 	MsgTypeUnsub
 	MsgTypePub
   MsgTypeNewChan
+  MsgTypeNewMultiChan
   MsgTypeDelChan
   MsgTypeChanNames
   MsgTypeOk

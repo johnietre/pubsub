@@ -2,11 +2,11 @@ package main
 
 import (
   "fmt"
-  "github.com/johnietre/pubsub/client"
+  "github.com/johnietre/pubsub"
 )
 
 func main() {
-  client, err := client.NewClient("127.0.0.1:8000", 100, false); must(err)
+  client, err := pubsub.NewClient("127.0.0.1:8000", 100, false); must(err)
   defer client.Close()
   client.Sub("chan3", "chan5", "chan15", "chann")
 

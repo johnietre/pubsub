@@ -4,13 +4,13 @@ import (
   "strconv"
   "time"
 
-  "github.com/johnietre/pubsub/client"
+  "github.com/johnietre/pubsub"
 )
 
 var dur = time.Second * 5
 
 func main() {
-  client, err := client.NewClient("127.0.0.1:8000", 5, false); must(err)
+  client, err := pubsub.NewClient("127.0.0.1:8000", 5, false); must(err)
   defer client.Close()
   err = client.NewChan("chan3", "chan5", "chan15", "chann"); must(err)
   chann, ok := client.GetChan("chann")
