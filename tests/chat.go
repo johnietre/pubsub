@@ -59,6 +59,13 @@ func main() {
     } else {
       fmt.Printf("%s got a message on %s: %s\n", which, name, msg)
     }
+
+    name, msg, _, err = c.Recv(true)
+    if err != nil {
+      fmt.Printf("%s got an error: %v\n", which, err)
+    } else {
+      fmt.Printf("%s got a message on %s: %s\n", which, name, msg)
+    }
   }
 
   wg.Add(1)

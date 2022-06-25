@@ -87,7 +87,7 @@ func (s *Server) GetErrorLog() *log.Logger {
 }
 
 // NewClient creates a new client piped to the server (using net.Pipe)
-func (s *Server) NewClient(queueLen uint, discard bool) *Client {
+func (s *Server) NewClient(queueLen uint32, discard bool) *Client {
 	clientConn, serverConn := net.Pipe()
 	go s.handle(serverConn)
 	return NewClientFromConn(clientConn, queueLen, discard)

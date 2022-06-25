@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -12,6 +13,8 @@ import (
 
 	"github.com/johnietre/pubsub/utils"
 )
+
+const recvRefreshTime = time.Second * 5
 
 var (
 	// ErrChanExist is the error used when trying to create an already existing
@@ -32,6 +35,7 @@ var (
 )
 
 // Client is a client linked to a Server.
+// TODO: Keep track of the number of channels
 type Client struct {
 	conn         net.Conn
 	subs         *utils.SyncMap[string, *Channel]
@@ -41,7 +45,7 @@ type Client struct {
 	allChansMtx      sync.Mutex
 	lastChansRefresh int64
 
-	msgQueueLen   uint
+	msgQueueLen   uint32
 	discardOnFull bool
 }
 
@@ -51,7 +55,7 @@ type Client struct {
 // discarded when the message backlog is full. If not, the entire client
 // process will block and no new messages will be received/processed until Recv
 // is called again.
-func NewClient(addr string, queueLen uint, discard bool) (*Client, error) {
+func NewClient(addr string, queueLen uint32, discard bool) (*Client, error) {
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
 		return nil, err
@@ -69,7 +73,7 @@ func NewClient(addr string, queueLen uint, discard bool) (*Client, error) {
 }
 
 // NewClientFromConn creates a new client from the given net.Conn
-func NewClientFromConn(conn net.Conn, queueLen uint, discard bool) *Client {
+func NewClientFromConn(conn net.Conn, queueLen uint32, discard bool) *Client {
 	c := &Client{
 		conn:          conn,
 		subs:          utils.NewSyncMap[string, *Channel](),
@@ -132,17 +136,18 @@ func (c *Client) NewChan(names ...string) error {
 		return err
 	}
 	for _, name := range names {
-		c.pubs.LoadOrStore(name, c.newChannel(name, c.msgQueueLen, true))
+		c.pubs.LoadOrStore(name, c.newChannel(name, 0, true))
 	}
 	return nil
 }
 
+// NewMultiChan creates a new channel that can have multiple publishers
 func (c *Client) NewMultiChan(names ...string) error {
 	if err := c.sendMsg(utils.MsgTypeNewMultiChan, strings.Join(names, "\n")); err != nil {
 		return err
 	}
 	for _, name := range names {
-		c.pubs.LoadOrStore(name, c.newChannel(name, c.msgQueueLen, true))
+		c.pubs.LoadOrStore(name, c.newChannel(name, 0, true))
 	}
 	return nil
 }
@@ -261,30 +266,57 @@ func (c *Client) Recv(blocking bool) (chanName string, msg string, got bool, err
 		return
 	}
 	for {
+		var chans []*Channel
+		var cases []reflect.SelectCase
 		c.subs.Range(func(name string, ch *Channel) bool {
-			msg, got, err = ch.Recv(false)
-			if got || err != nil {
-				chanName = name
-				return false
-			}
+			chans = append(chans, ch)
+			cases = append(cases, reflect.SelectCase{
+        Dir: reflect.SelectRecv, Chan: reflect.ValueOf(ch.ch)})
 			return true
 		})
-		if chanName != "" {
-			return
+		timeoutChan := make(chan struct{})
+		cases = append(cases, reflect.SelectCase{
+			Dir: reflect.SelectRecv, Chan: reflect.ValueOf(timeoutChan)})
+		// A timer to refresh the chans
+		go func() {
+			time.Sleep(recvRefreshTime)
+			close(timeoutChan)
+		}()
+		i, recv, ok := reflect.Select(cases)
+		// A message was received
+		if ok {
+			return chans[i].name, recv.String(), true, nil
 		}
+		// There was a channel error
+		if i != len(cases)-1 {
+			return chans[i].name, "", true, chans[i].Err()
+		}
+		// If this point was reached, the operation timed out
+
+		/*
+			c.subs.Range(func(name string, ch *Channel) bool {
+				msg, got, err = ch.Recv(false)
+				if got || err != nil {
+					chanName = name
+					return false
+				}
+				return true
+			})
+			if chanName != "" {
+				return
+			}
+		*/
 	}
 }
 
 // Closes the client, deleting the channels and closing the underlying client.
 func (c *Client) Close() error {
 	c.subs.Range(func(name string, ch *Channel) bool {
-		c.subs.Delete(name)
-		ch.err.Store(ErrChanClosed)
+    ch.closeChan(false)
 		return true
 	})
 	c.pubs.Range(func(name string, ch *Channel) bool {
-		c.pubs.Delete(name)
-		ch.err.Store(ErrChanClosed)
+    ch.closeChan(false)
 		return true
 	})
 	return c.conn.Close()
@@ -348,11 +380,11 @@ func (c *Client) recv() {
 		// TODO: Propogate error
 		if err != nil {
 			c.subs.Range(func(_ string, ch *Channel) bool {
-				ch.err.Store(err)
+        ch.closeChan(false)
 				return true
 			})
 			c.pubs.Range(func(_ string, ch *Channel) bool {
-				ch.err.Store(err)
+        ch.closeChan(false)
 				return true
 			})
 			return
@@ -366,11 +398,11 @@ func (c *Client) recv() {
 		// TODO: Propogate error
 		if err != nil {
 			c.subs.Range(func(_ string, ch *Channel) bool {
-				ch.err.Store(err)
+        ch.closeChan(false)
 				return true
 			})
 			c.pubs.Range(func(_ string, ch *Channel) bool {
-				ch.err.Store(err)
+        ch.closeChan(false)
 				return true
 			})
 			return
@@ -388,39 +420,52 @@ func (c *Client) recv() {
 			}
 			// NOTE: Possibly do something if channel isn't loaded
 			if channel, loaded := c.subs.Load(parts[0]); loaded {
-				select {
-				case channel.ch <- parts[1]: // Send successfully
-				default:
-					// Check if it needs to be discarded
-					if c.discardOnFull {
-						select {
-						case <-channel.ch: // Possibility it's already been read from
-						default:
-						}
-						// TODO: Should never be full after this so using select should be
-						// unnecessary
-						select {
-						case channel.ch <- parts[1]:
-						default:
-						}
-					}
-				}
+        if channel.Err() != nil {
+          continue
+        }
+        func() {
+          defer func() {
+            // Just in case the channel is closed after the check earlier
+            recover()
+          }()
+          select {
+          case channel.ch <- parts[1]: // Send successfully
+          default:
+            // Check if it needs to be discarded
+            if c.discardOnFull {
+              select {
+              case _, ok := <-channel.ch: // Possibility it's already been read from
+                // Channel has been closed
+                if !ok {
+                  return
+                }
+              default:
+              }
+              // TODO: Should never be full after this so using select should be
+              // unnecessary
+              select {
+              case channel.ch <- parts[1]:
+              default:
+              }
+            }
+          }
+        }()
 			}
 		case utils.MsgTypeSub:
 			for _, name := range strings.Split(msg, "\n") {
 				if channel, loaded := c.subs.Load(name); loaded {
-					channel.err.Store(ErrChanNotExist)
+          channel.closeChanWithErr(false, ErrChanNotExist)
 				}
 			}
 		case utils.MsgTypeNewChan, utils.MsgTypeNewMultiChan:
 			for _, name := range strings.Split(msg, "\n") {
 				if channel, loaded := c.pubs.LoadAndDelete(name); loaded {
-					channel.err.Store(ErrChanExist)
+          channel.closeChanWithErr(false, ErrChanExist)
 				}
 			}
 		case utils.MsgTypeDelChan:
 			if channel, loaded := c.subs.Load(msg); loaded {
-				channel.err.Store(ErrChanClosed)
+        channel.closeChan(false)
 			}
 		case utils.MsgTypeChanNames:
 			// Needs to be locked in case there's a call to clear the names
@@ -446,7 +491,7 @@ func (c *Client) recv() {
 	}
 }
 
-func (c *Client) newChannel(name string, l uint, pub bool) *Channel {
+func (c *Client) newChannel(name string, l uint32, pub bool) *Channel {
 	return &Channel{client: c, name: name, ch: make(chan string, l), isPub: pub}
 }
 
@@ -454,7 +499,6 @@ func (c *Client) newChannel(name string, l uint, pub bool) *Channel {
 type Channel struct {
 	client *Client
 	name   string
-	// TODO: possibly close chan on delete
 	ch    chan string
 	isPub bool
 	err   atomic.Value
@@ -506,17 +550,16 @@ func (ch *Channel) Recv(blocking bool) (string, bool, error) {
 		}
 		return "", false, nil
 	}
-	for {
-		select {
-		case msg := <-ch.ch:
-			return msg, true, nil
-		default:
+	select {
+	case msg, ok := <-ch.ch:
+		if !ok {
 			err := ch.err.Load()
 			if err != nil {
 				ch.client.subs.Delete(ch.name)
 				return "", false, err.(error)
 			}
 		}
+		return msg, true, nil
 	}
 }
 
@@ -547,15 +590,24 @@ func (ch *Channel) PubBytes(msg []byte) error {
 // Close unsubs or deletes a channel, depending on if it's a publisher or not.
 // It also removes the channel from the client's list.
 func (ch *Channel) Close() {
-	if ch.err.Load() != nil {
-		return
-	}
-	ch.err.Store(ErrChanClosed)
+  ch.closeChan(true)
+}
+
+func (ch *Channel) closeChan(sendMsg bool) {
+  ch.closeChanWithErr(sendMsg, ErrChanClosed)
+}
+
+func (ch *Channel) closeChanWithErr(sendMsg bool, err error) {
+  if !ch.err.CompareAndSwap(nil, err) {
+    return
+  }
+  close(ch.ch)
+  if !sendMsg {
+    return
+  }
 	if !ch.isPub {
 		ch.client.sendMsg(utils.MsgTypeUnsub, ch.name)
-		ch.client.subs.Delete(ch.name)
 		return
 	}
 	ch.client.sendMsg(utils.MsgTypeDelChan, ch.name)
-	ch.client.pubs.Delete(ch.name)
 }
