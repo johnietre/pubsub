@@ -13,7 +13,7 @@ import (
 	"github.com/johnietre/pubsub/utils"
 )
 
-const recvRefreshTime = time.Second * 5
+const timeoutDur = time.Second * 5
 
 var (
 	// ErrChanExist is the error used when trying to create an already existing
@@ -46,6 +46,8 @@ type Client struct {
 
 	msgQueueLen   uint32
 	discardOnFull bool
+
+	timeoutChans *utils.SyncSet[chan utils.Unit]
 }
 
 // NewClient creates a new client connected to the server on the given addr.
@@ -59,16 +61,7 @@ func NewClient(addr string, queueLen uint32, discard bool) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := &Client{
-		conn:          conn,
-		subs:          utils.NewSyncMap[string, *Channel](),
-		pubs:          utils.NewSyncMap[string, *Channel](),
-		allChanNames:  utils.NewSyncSet[string](),
-		msgQueueLen:   queueLen,
-		discardOnFull: discard,
-	}
-	go c.recv()
-	return c, nil
+	return NewClientFromConn(conn, queueLen, discard), nil
 }
 
 // NewClientFromConn creates a new client from the given net.Conn
@@ -80,8 +73,10 @@ func NewClientFromConn(conn net.Conn, queueLen uint32, discard bool) *Client {
 		allChanNames:  utils.NewSyncSet[string](),
 		msgQueueLen:   queueLen,
 		discardOnFull: discard,
+		timeoutChans:  utils.NewSyncSet[chan utils.Unit](),
 	}
 	go c.recv()
+	go c.runTimeout()
 	return c
 }
 
@@ -264,47 +259,39 @@ func (c *Client) Recv(blocking bool) (chanName string, msg string, got bool, err
 		})
 		return
 	}
+	timeoutChan := c.getTimeoutChan()
+	refTChan := reflect.SelectCase{
+		Dir:  reflect.SelectRecv,
+		Chan: reflect.ValueOf(timeoutChan),
+	}
+	defer c.retTimeoutChan(timeoutChan)
 	for {
+		cases := []reflect.SelectCase{refTChan}
 		var chans []*Channel
-		var cases []reflect.SelectCase
 		c.subs.Range(func(name string, ch *Channel) bool {
 			chans = append(chans, ch)
-			cases = append(cases, reflect.SelectCase{
-				Dir: reflect.SelectRecv, Chan: reflect.ValueOf(ch.ch)})
+			cases = append(
+				cases,
+				reflect.SelectCase{
+					Dir:  reflect.SelectRecv,
+					Chan: reflect.ValueOf(ch.ch),
+				},
+			)
 			return true
 		})
-		timeoutChan := make(chan struct{})
-		cases = append(cases, reflect.SelectCase{
-			Dir: reflect.SelectRecv, Chan: reflect.ValueOf(timeoutChan)})
-		// A timer to refresh the chans
-		go func() {
-			time.Sleep(recvRefreshTime)
-			close(timeoutChan)
-		}()
 		i, recv, ok := reflect.Select(cases)
+		i--
+		if i == -1 {
+			// The msg received came from the timeout
+			continue
+		}
 		// A message was received
 		if ok {
 			return chans[i].name, recv.String(), true, nil
 		}
 		// There was a channel error
-		if i != len(cases)-1 {
-			return chans[i].name, "", true, chans[i].Err()
-		}
+		return chans[i].name, "", true, chans[i].Err()
 		// If this point was reached, the operation timed out
-
-		/*
-			c.subs.Range(func(name string, ch *Channel) bool {
-				msg, got, err = ch.Recv(false)
-				if got || err != nil {
-					chanName = name
-					return false
-				}
-				return true
-			})
-			if chanName != "" {
-				return
-			}
-		*/
 	}
 }
 
@@ -492,6 +479,29 @@ func (c *Client) recv() {
 
 func (c *Client) newChannel(name string, l uint32, pub bool) *Channel {
 	return &Channel{client: c, name: name, ch: make(chan string, l), isPub: pub}
+}
+
+func (c *Client) runTimeout() {
+	for {
+		time.Sleep(timeoutDur)
+		c.timeoutChans.Range(func(ch chan utils.Unit) bool {
+			select {
+			case ch <- utils.Unit{}:
+			default:
+			}
+			return true
+		})
+	}
+}
+
+func (c *Client) getTimeoutChan() chan utils.Unit {
+	ch := make(chan utils.Unit)
+	c.timeoutChans.Insert(ch)
+	return ch
+}
+
+func (c *Client) retTimeoutChan(ch chan utils.Unit) {
+	c.timeoutChans.Remove(ch)
 }
 
 // Channel represents a channel.
