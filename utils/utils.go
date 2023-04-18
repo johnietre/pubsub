@@ -71,6 +71,10 @@ func (sm *SyncMap[K, V]) Load(key K) (v V, loaded bool) {
 	return
 }
 
+func (sm *SyncMap[K, V]) Store(key K, val V) {
+  sm.m.Store(key, val)
+}
+
 func (sm *SyncMap[K, V]) LoadOrStore(key K, val V) (v V, loaded bool) {
 	var value any
 	value, loaded = sm.m.LoadOrStore(key, val)
@@ -178,3 +182,139 @@ func (s *SyncSet[T]) Range(f func(T) bool) {
 
 // Unit is an empty struct (struct{})
 type Unit struct{}
+
+func Select1[T any](c <-chan T, out chan<- T) chan Unit {
+  stopChan := make(chan Unit, 1)
+  go func() {
+    select1(c, out, stopChan)
+    close(out)
+  }()
+  return stopChan
+}
+
+func select1[T any](c <-chan T, out chan<- T, stopChan <-chan Unit) {
+  for {
+    select {
+    case t, ok := <-c:
+      if !ok {
+        return
+      }
+      out <- t
+    case _, _ = <-stopChan:
+      return
+    }
+  }
+}
+
+func Select2[T any](c1, c2 <-chan T, out chan<- T) chan Unit {
+  stopChan := make(chan Unit, 1)
+  go func() {
+    select2(c1, c2, out, stopChan)
+    close(out)
+  }()
+  return stopChan
+}
+
+func select2[T any](c1, c2 <-chan T, out chan<- T, stopChan <-chan Unit) {
+  var ok bool
+  var t T
+  for {
+    select {
+    case t, ok = <-c1:
+      if !ok {
+        select1(c2, out, stopChan)
+        return
+      }
+    case t, ok = <-c2:
+      if !ok {
+        select1(c1, out, stopChan)
+        return
+      }
+    case _, _ = <-stopChan:
+      return
+    }
+    out <- t
+  }
+}
+
+func Select3[T any](c1, c2, c3 <-chan T, out chan<- T) chan Unit {
+  stopChan := make(chan Unit, 1)
+  go func() {
+    select3(c1, c2, c3, out, stopChan)
+    close(out)
+  }()
+  return stopChan
+}
+
+func select3[T any](c1, c2, c3 <-chan T, out chan<- T, stopChan chan Unit) {
+  var ok bool
+  var t T
+  for {
+    select {
+    case t, ok = <-c1:
+      if !ok {
+        select2(c2, c3, out, stopChan)
+        return
+      }
+    case t, ok = <-c2:
+      if !ok {
+        select2(c1, c3, out, stopChan)
+        return
+      }
+    case t, ok = <-c3:
+      if !ok {
+        select2(c1, c2, out, stopChan)
+        return
+      }
+    case _, _ = <-stopChan:
+      return
+    }
+    out <- t
+  }
+}
+
+func SelectN[T any](out chan<- T, chans ...<-chan T) chan Unit {
+  stopChan, stopChans := make(chan Unit, 1), make([]chan Unit, 0)
+  var wg sync.WaitGroup
+  for l := len(chans); l > 0; l = len(chans) {
+    if l >= 3 {
+      stop, c1, c2, c3 := make(chan Unit), chans[0], chans[1], chans[2]
+      stopChans = append(stopChans, stop)
+      wg.Add(1)
+      go func() {
+        select3(c1, c2, c3, out, stop)
+        wg.Done()
+      }()
+      chans = chans[3:]
+    } else if l >= 2 {
+      stop, c1, c2 := make(chan Unit), chans[0], chans[1]
+      stopChans = append(stopChans, stop)
+      wg.Add(1)
+      go func() {
+        select2(c1, c2, out, stop)
+        wg.Done()
+      }()
+      chans = chans[2:]
+    } else {
+      stop, c := make(chan Unit), chans[0]
+      stopChans = append(stopChans, stop)
+      wg.Add(1)
+      go func() {
+        select1(c, out, stop)
+        wg.Done()
+      }()
+      chans = chans[1:]
+    }
+  }
+  go func() {
+    wg.Wait()
+    close(out)
+  }()
+  go func() {
+    _, _ = <-stopChan
+    for _, c := range stopChans {
+      close(c)
+    }
+  }()
+  return stopChan
+}
