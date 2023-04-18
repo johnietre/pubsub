@@ -16,6 +16,8 @@ const (
 
 // Server acts as a server/hub for clients and channels
 type Server struct {
+	// TODO: Add Closed variable to keep track of if closed to return err from
+	// NewClient?
 	ln       net.Listener
 	channels *utils.SyncMap[string, *serverChannel]
 	errorLog *log.Logger

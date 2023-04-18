@@ -297,10 +297,10 @@ func (c *Client) Recv(blocking bool) (chanName string, msg string, got bool, err
 
 // RecvBytes does the same thing as Recv but returns the message as bytes
 func (c *Client) RecvBytes(blocking bool) (chanName string, msg []byte, got bool, err error) {
-  var smsg string
-  chanName, smsg, got, err = c.Recv(blocking)
-  msg = []byte(smsg)
-  return
+	var smsg string
+	chanName, smsg, got, err = c.Recv(blocking)
+	msg = []byte(smsg)
+	return
 }
 
 // Closes the client, deleting the channels and closing the underlying client.
@@ -582,8 +582,8 @@ func (ch *Channel) Recv(blocking bool) (string, bool, error) {
 
 // RecvBytes does the same the as Recv but returns the message as bytes
 func (ch *Channel) RecvBytes(blocking bool) ([]byte, bool, error) {
-  msg, ok, err := c.Recv(blocking)
-  return []byte(msg), ok, err
+	msg, ok, err := c.Recv(blocking)
+	return []byte(msg), ok, err
 }
 
 // Pub publishes the given message to the channel, returning an error if the
