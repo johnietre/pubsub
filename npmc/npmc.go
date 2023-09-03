@@ -44,7 +44,7 @@ func (c *Client[T]) Network() *Network[T] {
 
 // NewPub creates a new pub channel if the channel doesn't already exist. If it
 // does, it returns nil, false. Additionally, nil, false is returned if the
-// channel is closed.
+// client is closed.
 func (c *Client[T]) NewPub(name string) (*Channel[T], bool) {
 	c.closeMtx.RLock()
 	defer c.closeMtx.RUnlock()
@@ -65,6 +65,12 @@ func (c *Client[T]) NewPub(name string) (*Channel[T], bool) {
 		return nil, false
 	}
 	return ch, true
+}
+
+// GetPub returns the pub channel with the given name if it exists.
+func (c *Client[T]) GetPub(name string) *Channel[T] {
+  ch, _ := c.pubs.Load(name)
+  return ch
 }
 
 // ClosePub closes the pub channel with the given name, if it exists and the
@@ -112,6 +118,12 @@ func (c *Client[T]) NewSub(name string, chanLen uint32) (*Channel[T], bool) {
 	}
 	c.subs.Store(name, subChannel)
 	return subChannel, true
+}
+
+// GetSub returns the sub channel with the given name if it exists.
+func (c *Client[T]) GetSub(name string) *Channel[T] {
+  ch, _ := c.subs.Load(name)
+  return ch
 }
 
 // Unsub unsubscribes from a channel.
@@ -258,6 +270,9 @@ type MergedChan[T any] struct {
 // Nothing is returned, even if all the channels are closed (nothing is done if
 // this is the case).
 func (mc *MergedChan[T]) Pub(t T) {
+  if !mc.isPub {
+    return
+  }
 	mc.channels.Range(func(_ string, ch *Channel[T]) bool {
 		ch.Pub(t)
 		return true
