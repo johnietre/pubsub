@@ -582,7 +582,7 @@ func (ch *Channel) Recv(blocking bool) (string, bool, error) {
 
 // RecvBytes does the same the as Recv but returns the message as bytes
 func (ch *Channel) RecvBytes(blocking bool) ([]byte, bool, error) {
-	msg, ok, err := c.Recv(blocking)
+	msg, ok, err := ch.Recv(blocking)
 	return []byte(msg), ok, err
 }
 
