@@ -1,3 +1,8 @@
 # Pubsub
 - A pub-sub library
-- Includes n-produces, multi-consumer network (channels) for passing go objects (in npmc)
+
+## npmc
+- n-producers, multi-consumer network (named channels) for passing Go objects
+
+## spmc
+- Single producer, multi-consumer network (named channels) for passing Go objects
