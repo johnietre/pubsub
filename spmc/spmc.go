@@ -1,6 +1,6 @@
 package spmc
 
-// TODO: Change chanLen to chanCap
+// TODO: Change chanCap to chanCap
 
 import (
 	"fmt"
@@ -59,21 +59,21 @@ func NewNetwork[T any]() *Network[T] {
 	}
 }
 
-// NewClient creates a new client on the network with the given chan length.
-func (n *Network[T]) NewClient(chanLen uint32) *Client[T] {
+// NewClient creates a new client on the network with the given chan capacity.
+func (n *Network[T]) NewClient(chanCap uint32) *Client[T] {
 	return &Client[T]{
 		network: n,
-		chanLen: chanLen,
-		msgChan: make(chan ChannelMsg[T], chanLen),
+		chanCap: chanCap,
+		msgChan: make(chan ChannelMsg[T], chanCap),
 	}
 }
 
 // NewClientSubCurrent creates a new client subbed to the current channels.
-func (n *Network[T]) NewClientSubCurrent(chanLen uint32) *Client[T] {
+func (n *Network[T]) NewClientSubCurrent(chanCap uint32) *Client[T] {
 	c := &Client[T]{
 		network: n,
-		chanLen: chanLen,
-		msgChan: make(chan ChannelMsg[T], chanLen),
+		chanCap: chanCap,
+		msgChan: make(chan ChannelMsg[T], chanCap),
 	}
 	n.channels.Range(func(_ string, ch *channel[T]) bool {
 		ch.subs.Insert(c)
@@ -84,11 +84,11 @@ func (n *Network[T]) NewClientSubCurrent(chanLen uint32) *Client[T] {
 
 // NewClientSubAll creates a new client subbed to all current and future
 // channels.
-func (n *Network[T]) NewClientSubAll(chanLen uint32) *Client[T] {
+func (n *Network[T]) NewClientSubAll(chanCap uint32) *Client[T] {
 	c := &Client[T]{
 		network: n,
-		chanLen: chanLen,
-		msgChan: make(chan ChannelMsg[T], chanLen),
+		chanCap: chanCap,
+		msgChan: make(chan ChannelMsg[T], chanCap),
 	}
 	c.subbedAll.Store(true)
 	c.subAllSet.Store(n.subAllClients)
@@ -130,7 +130,7 @@ func (n *Network[T]) addChannel(ch *channel[T]) (PubChannel[T], error) {
 type Client[T any] struct {
 	network *Network[T]
 
-	chanLen uint32
+	chanCap uint32
 	msgChan chan ChannelMsg[T]
 	// Messages should only be sent on the channel if the read or write lock is
 	// held.
@@ -185,14 +185,14 @@ func (c *Client[T]) RecvTimeout(
 }
 
 // ResizeChan attempts to resize the client's message chan and transfer over.
-// The old messages into the new chan. If the new length is less than the
+// The old messages into the new chan. If the new capacity is less than the
 // current, the difference is dropped.
-// This should not be used often, especially if the current chan length is
+// This should not be used often, especially if the current chan capacity is
 // sufficiently large and there are a sufficient number of messages queued
 // since this locks the client until all messages are transferred, which slows
 // down all other operations that involve the client (like when a channel pubs
 // and the client is a sub).
-func (c *Client[T]) ResizeChan(chanLen uint32) error {
+func (c *Client[T]) ResizeChan(chanCap uint32) error {
 	if c.isClosed.Load() {
 		return ErrClientClosed
 	}
@@ -202,9 +202,9 @@ func (c *Client[T]) ResizeChan(chanLen uint32) error {
 		return ErrClientClosed
 	}
 	//close(c.msgChan)
-	newCh := make(chan ChannelMsg[T], chanLen)
+	newCh := make(chan ChannelMsg[T], chanCap)
 ResizeChanLoop:
-	for i := uint32(0); i < chanLen; i++ {
+	for i := uint32(0); i < chanCap; i++ {
 		select {
 		case msg := <-c.msgChan:
 			select {
@@ -218,13 +218,13 @@ ResizeChanLoop:
 	}
 	close(c.msgChan)
 	c.msgChan = newCh
-	c.chanLen = chanLen
+	c.chanCap = chanCap
 	return nil
 }
 
-// Sub attempts to subscribe to a channel. Returns ErrClientSubbedAll if the
+// NewSub attempts to subscribe to a channel. Returns ErrClientSubbedAll if the
 // client is currently subbed to all channels.
-func (c *Client[T]) Sub(name string) (SubChannel[T], error) {
+func (c *Client[T]) NewSub(name string) (SubChannel[T], error) {
 	if c.isClosed.Load() {
 		return nil, ErrClientClosed
 	} else if c.IsSubbedAll() {
@@ -239,7 +239,33 @@ func (c *Client[T]) Sub(name string) (SubChannel[T], error) {
 	return newSubChannel(ch), nil
 }
 
-// TODO: Batch subs
+// Sub is an alias for Client.NewSub.
+func (c *Client[T]) Sub(name string) (SubChannel[T], error) {
+  return c.NewSub(name)
+}
+
+// NewSubs attempts to subscribe the the channels with the given names. Returns
+// basically the same errors/error structure as GetSubs.
+func (c *Client[T]) NewSubs(names ...string) ([]SubChannel[T], error) {
+	if c.isClosed.Load() {
+		return nil, ErrClientClosed
+	} else if c.IsSubbedAll() {
+		return nil, ErrClientSubbedAll
+	}
+	subs := make([]SubChannel[T], 0, len(names))
+	var errs utils.ErrorSlice
+	for i, name := range names {
+		if ch, err := c.NewSub(name); err != nil {
+			errs = append(errs, utils.ElemError{Index: i, Err: err})
+		} else {
+			subs = append(subs, ch)
+		}
+	}
+	if len(errs) == 0 {
+		return subs, nil
+	}
+	return subs, errs
+}
 
 // SubCurrent attempts to subscribe to all the channels currently on the
 // network. Doesn't subscribe to future channels.
@@ -415,7 +441,27 @@ func (c *Client[T]) NewPub(
 	return c.network.addChannel(ch)
 }
 
-// TODO: Batch subs
+// NewPubs attempts to create new channels with the given names, all with the
+// given msgOnClose. Returns basically the same errors/error structure as
+// GetPubs.
+func (c *Client[T]) NewPubs(msgOnClose bool, names ...string) ([]PubChannel[T], error) {
+	if c.isClosed.Load() {
+		return nil, ErrClientClosed
+	}
+	pubs := make([]PubChannel[T], 0, len(names))
+	var errs utils.ErrorSlice
+	for i, name := range names {
+		if ch, err := c.NewPub(name, msgOnClose); err != nil {
+			errs = append(errs, utils.ElemError{Index: i, Err: err})
+		} else {
+			pubs = append(pubs, ch)
+		}
+	}
+	if len(errs) == 0 {
+		return pubs, nil
+	}
+	return pubs, errs
+}
 
 // GetPub attempts to get a channel the client owns (and can publish to).
 func (c *Client[T]) GetPub(name string) (PubChannel[T], error) {
