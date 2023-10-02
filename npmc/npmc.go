@@ -16,16 +16,16 @@ import (
 // Netowrk is a network of channels that clients can pub/sub to.
 type Network[T any] struct {
 	channels *utils.SyncMap[string, *Channel[T]]
-  // Holds the client and the chanLen passed
-  subAllClients *utils.SyncMap[*Client[T], uint32]
+	// Holds the client and the chanLen passed
+	subAllClients *utils.SyncMap[*Client[T], uint32]
 }
 
 // NetNetwork creates a new network.
 func NewNetwork[T any]() *Network[T] {
 	return &Network[T]{
-    channels: utils.NewSyncMap[string, *Channel[T]](),
-    subAllClients: utils.NewSyncMap[*Client[T], uint32](),
-  }
+		channels:      utils.NewSyncMap[string, *Channel[T]](),
+		subAllClients: utils.NewSyncMap[*Client[T], uint32](),
+	}
 }
 
 // NewClient creates a new client on the network.
@@ -44,50 +44,50 @@ func (n *Network[T]) NewClientLite() *Client[T] {
 		network: n,
 		pubs:    utils.NewSyncMap[string, *Channel[T]](),
 		subs:    utils.NewSyncMap[string, *Channel[T]](),
-    isLite: true,
+		isLite:  true,
 	}
 }
 
 // NewClientSubCurrent creates a new client that's subbed to all of the current
 // channels.
 func (n *Network[T]) NewClientSubCurrent(lite bool, chanLen uint32) *Client[T] {
-  c := &Client[T]{
-    network: n,
+	c := &Client[T]{
+		network: n,
 		pubs:    utils.NewSyncMap[string, *Channel[T]](),
 		subs:    utils.NewSyncMap[string, *Channel[T]](),
-    isLite: lite,
-  }
-  n.channels.Range(func(name string, ch *Channel[T]) bool {
-    c.NewSub(name, chanLen)
-    return true
-  })
-  return c
+		isLite:  lite,
+	}
+	n.channels.Range(func(name string, ch *Channel[T]) bool {
+		c.NewSub(name, chanLen)
+		return true
+	})
+	return c
 }
 
 // NewClientSubAll creates a new client that's subbed to all of the current
 // channels and will auto-sub to all future channels.
 func (n *Network[T]) NewClientSubAll(lite bool, chanLen uint32) *Client[T] {
-  c := &Client[T]{
-    network: n,
+	c := &Client[T]{
+		network: n,
 		pubs:    utils.NewSyncMap[string, *Channel[T]](),
 		subs:    utils.NewSyncMap[string, *Channel[T]](),
-    isLite: lite,
-  }
-  n.subAllClients.Store(c, chanLen)
-  n.channels.Range(func(name string, ch *Channel[T]) bool {
-    c.NewSub(name, chanLen)
-    return true
-  })
-  return c
+		isLite:  lite,
+	}
+	n.subAllClients.Store(c, chanLen)
+	n.channels.Range(func(name string, ch *Channel[T]) bool {
+		c.NewSub(name, chanLen)
+		return true
+	})
+	return c
 }
 
 // RangeNames iterates through the names of the channels on the network and
 // passes each to the provided function, `f`. If `f` returns false, iteration
 // stops.
 func (n *Network[T]) RangeNames(f func(string) bool) {
-  n.channels.Range(func(name string, _ *Channel[T]) bool {
-    return f(name)
-  })
+	n.channels.Range(func(name string, _ *Channel[T]) bool {
+		return f(name)
+	})
 }
 
 // ListNames returns a list of the current channel names on the network.
@@ -95,12 +95,12 @@ func (n *Network[T]) RangeNames(f func(string) bool) {
 // returned list can be modified, but, of course, has the downside of a new
 // list being created every call.
 func (n *Network[T]) ListNames() []string {
-  var names []string
-  n.channels.Range(func(name string, _ *Channel[T]) bool {
-    names = append(names, name)
-    return true
-  })
-  return names
+	var names []string
+	n.channels.Range(func(name string, _ *Channel[T]) bool {
+		names = append(names, name)
+		return true
+	})
+	return names
 }
 
 // Creates a new pub channel if the channel doesn't already exist. If it does,
@@ -109,24 +109,24 @@ func (n *Network[T]) ListNames() []string {
 // closed. This only tries to create a singlepub channel. If the channel exists
 // but is multipub, nil, false is returned no matter what.
 func (n *Network[T]) addChannel(
-  client *Client[T], ch *Channel[T],
+	client *Client[T], ch *Channel[T],
 ) (*Channel[T], bool) {
-  ch, loaded := n.channels.LoadOrStore(ch.name, ch)
-  if loaded {
-    if ch.client != client || ch.multiplePubs {
-      ch = nil
-    }
-  } else {
-    // loaded shouldn't be true but check anyway
-    if ch, loaded := client.pubs.LoadOrStore(ch.name, ch); loaded {
-      return ch, false
-    }
-    n.subAllClients.Range(func(c *Client[T], chanLen uint32) bool {
-      c.NewSub(ch.name, chanLen)
-      return true
-    })
-  }
-  return ch, !loaded
+	ch, loaded := n.channels.LoadOrStore(ch.name, ch)
+	if loaded {
+		if ch.client != client || ch.multiplePubs {
+			ch = nil
+		}
+	} else {
+		// loaded shouldn't be true but check anyway
+		if ch, loaded := client.pubs.LoadOrStore(ch.name, ch); loaded {
+			return ch, false
+		}
+		n.subAllClients.Range(func(c *Client[T], chanLen uint32) bool {
+			c.NewSub(ch.name, chanLen)
+			return true
+		})
+	}
+	return ch, !loaded
 }
 
 // Client represents a client on network that can publish (create) and
@@ -135,7 +135,7 @@ type Client[T any] struct {
 	network  *Network[T]
 	pubs     *utils.SyncMap[string, *Channel[T]]
 	subs     *utils.SyncMap[string, *Channel[T]]
-  isLite bool
+	isLite   bool
 	isClosed atomic.Bool
 	// This is used to help syncronize when the channel is closed
 	closeMtx sync.RWMutex
@@ -148,7 +148,7 @@ func (c *Client[T]) Network() *Network[T] {
 
 // IsLite returns true if the client was created with Network.NewClientLite.
 func (c *Client[T]) IsLite() bool {
-  return c.isLite
+	return c.isLite
 }
 
 // NewPub creates a new pub channel if the channel doesn't already exist. If it
@@ -169,11 +169,11 @@ func (c *Client[T]) NewPub(name string) (*Channel[T], bool) {
 		isPub:    true,
 		isClosed: &atomic.Bool{},
 		subChans: utils.NewSyncMap[*Client[T], chan ChannelMsg[T]](),
-    pubCount: &atomic.Int32{},
+		pubCount: &atomic.Int32{},
 		chanMtx:  &sync.RWMutex{},
 	}
-  ch.pubCount.Add(1)
-  return c.network.addChannel(c, ch)
+	ch.pubCount.Add(1)
+	return c.network.addChannel(c, ch)
 }
 
 /* TODO: MULTIPUB
@@ -210,16 +210,16 @@ func (c *Client[T]) NewMultiPub(name string) (*Channel[T], bool) {
 
 // GetPub returns the pub channel with the given name if it exists.
 func (c *Client[T]) GetPub(name string) *Channel[T] {
-  ch, _ := c.pubs.Load(name)
-  return ch
+	ch, _ := c.pubs.Load(name)
+	return ch
 }
 
 // ClosePub closes the pub channel with the given name, if it exists and the
 // client is the publisher.
 func (c *Client[T]) ClosePub(name string) {
 	if ch, loaded := c.pubs.Load(name); loaded {
-    ch.Close()
-  }
+		ch.Close()
+	}
 }
 
 // ClosePubs closes all channels the client publishes on.
@@ -242,9 +242,9 @@ func (c *Client[T]) NewSub(name string, chanLen uint32) (*Channel[T], bool) {
 	if c.isClosed.Load() {
 		return nil, false
 	}
-  if c.isLite {
-    return c.newSubLite(name, chanLen)
-  }
+	if c.isLite {
+		return c.newSubLite(name, chanLen)
+	}
 	if ch, loaded := c.subs.Load(name); loaded {
 		return ch, true
 	}
@@ -264,66 +264,66 @@ func (c *Client[T]) NewSub(name string, chanLen uint32) (*Channel[T], bool) {
 }
 
 func (c *Client[T]) newSubLite(
-  name string, chanLen uint32,
+	name string, chanLen uint32,
 ) (ch *Channel[T], subbed bool) {
-  c.network.channels.Range(func(chName string, nCh *Channel[T]) bool {
-    if chName == name {
-      ch, subbed = nCh.newSub(c, chanLen)
-      return false
-    }
-    return true
-  })
-  return nil, false
+	c.network.channels.Range(func(chName string, nCh *Channel[T]) bool {
+		if chName == name {
+			ch, subbed = nCh.newSub(c, chanLen)
+			return false
+		}
+		return true
+	})
+	return nil, false
 }
 
 // GetSub returns the sub channel with the given name if it exists.
 func (c *Client[T]) GetSub(name string) *Channel[T] {
-  if c.isLite {
-    return c.getSubLite(name)
-  }
-  ch, _ := c.subs.Load(name)
-  return ch
+	if c.isLite {
+		return c.getSubLite(name)
+	}
+	ch, _ := c.subs.Load(name)
+	return ch
 }
 
 func (c *Client[T]) getSubLite(name string) *Channel[T] {
-  if nCh, loaded := c.network.channels.Load(name); loaded {
-    return nCh.cloneWithClient(c)
-  }
-  return nil
+	if nCh, loaded := c.network.channels.Load(name); loaded {
+		return nCh.cloneWithClient(c)
+	}
+	return nil
 }
 
 // Unsub unsubscribes from a channel.
 func (c *Client[T]) Unsub(name string) {
-  c.unsub(name, true)
+	c.unsub(name, true)
 }
 
 // True should be passed if the channel should hold the chanMtx read lock when
 // unsubbing. See Channel.unsub.
 func (c *Client[T]) unsub(name string, lock bool) {
-  if c.isLite {
-    c.unsubLite(name, lock)
-    return
-  }
+	if c.isLite {
+		c.unsubLite(name, lock)
+		return
+	}
 	if ch, loaded := c.subs.Load(name); loaded {
-    ch.unsub(lock)
-  }
+		ch.unsub(lock)
+	}
 }
 
 // For lock param, see Client.unsub.
 func (c *Client[T]) unsubLite(name string, lock bool) {
-  if nCh, loaded := c.network.channels.Load(name); loaded {
-    if ch := nCh.cloneWithClient(c); ch != nil {
-      ch.unsub(lock)
-    }
-  }
+	if nCh, loaded := c.network.channels.Load(name); loaded {
+		if ch := nCh.cloneWithClient(c); ch != nil {
+			ch.unsub(lock)
+		}
+	}
 }
 
 // UnsubAll unsubscribes from all channels.
 func (c *Client[T]) UnsubAll() {
-  if c.isLite {
-    c.unsubAllLite()
-    return
-  }
+	if c.isLite {
+		c.unsubAllLite()
+		return
+	}
 	c.subs.Range(func(name string, _ *Channel[T]) bool {
 		c.Unsub(name)
 		return true
@@ -331,14 +331,14 @@ func (c *Client[T]) UnsubAll() {
 }
 
 func (c *Client[T]) unsubAllLite() {
-  c.network.channels.Range(func(chName string, nCh *Channel[T]) bool {
-    if _, loaded := nCh.subChans.Load(c); loaded {
-      if ch := nCh.cloneWithClient(c); ch != nil {
-        ch.Unsub()
-      }
-    }
-    return true
-  })
+	c.network.channels.Range(func(chName string, nCh *Channel[T]) bool {
+		if _, loaded := nCh.subChans.Load(c); loaded {
+			if ch := nCh.cloneWithClient(c); ch != nil {
+				ch.Unsub()
+			}
+		}
+		return true
+	})
 }
 
 // StartSubAll makes the client sub to all new channels that are created with
@@ -346,25 +346,25 @@ func (c *Client[T]) unsubAllLite() {
 // sub to all new channels, the chanLen used is replaced with the provided
 // value. False is returned if the client was already set to sub to new.
 func (c *Client[T]) StartSubAll(chanLen uint32, replace bool) bool {
-  _, loaded := c.network.subAllClients.LoadOrStore(c, chanLen)
-  if loaded {
-    c.network.subAllClients.Store(c, chanLen)
-  }
-  return !loaded
+	_, loaded := c.network.subAllClients.LoadOrStore(c, chanLen)
+	if loaded {
+		c.network.subAllClients.Store(c, chanLen)
+	}
+	return !loaded
 }
 
 // SubAllChanLen returns the length used when auto-subbing the client to newly
 // created channels. Returns false if the client is not set to do this.
 func (c *Client[T]) SubAllChanLen() (uint32, bool) {
-  l, loaded := c.network.subAllClients.Load(c)
-  return l, loaded
+	l, loaded := c.network.subAllClients.Load(c)
+	return l, loaded
 }
 
 // StopSubAll stops the client from subbing to new channels that are created.
 // Returns true if the client was set to do this.
 func (c *Client[T]) StopSubAll() bool {
-  _, loaded := c.network.subAllClients.LoadAndDelete(c)
-  return !loaded
+	_, loaded := c.network.subAllClients.LoadAndDelete(c)
+	return !loaded
 }
 
 // Close closes the client, unsubscribing (sub) and closing (pub) all channels.
@@ -374,7 +374,7 @@ func (c *Client[T]) Close() {
 		return
 	}
 	c.closeMtx.Lock()
-  c.StopSubAll()
+	c.StopSubAll()
 	c.UnsubAll()
 	c.ClosePubs()
 	c.closeMtx.Unlock()
@@ -395,7 +395,7 @@ func (c *Client[T]) MergePubs(names ...string) *MergedChan[T] {
 		}
 	}
 	return &MergedChan[T]{
-    client: c,
+		client:   c,
 		channels: channels,
 		isPub:    true,
 	}
@@ -412,13 +412,13 @@ func (c *Client[T]) MergePubChans(pubChans ...*Channel[T]) *MergedChan[T] {
 	channels := utils.NewSyncMap[string, *Channel[T]]()
 	var chans []<-chan ChannelMsg[T]
 	for _, ch := range pubChans {
-    if ch.client == c && ch.isPub && !ch.IsClosed() {
-      channels.Store(ch.name, ch)
-      chans = append(chans, ch.Chan())
-    }
+		if ch.client == c && ch.isPub && !ch.IsClosed() {
+			channels.Store(ch.name, ch)
+			chans = append(chans, ch.Chan())
+		}
 	}
 	return &MergedChan[T]{
-    client: c,
+		client:   c,
 		channels: channels,
 		isPub:    true,
 	}
@@ -438,7 +438,7 @@ func (c *Client[T]) MergeAllPubs() *MergedChan[T] {
 		return true
 	})
 	return &MergedChan[T]{
-    client: c,
+		client:   c,
 		channels: channels,
 		isPub:    true,
 	}
@@ -455,18 +455,18 @@ func (c *Client[T]) MergeSubs(chanLen uint32, names ...string) *MergedChan[T] {
 	channels := utils.NewSyncMap[string, *Channel[T]]()
 	var chans []<-chan ChannelMsg[T]
 	for _, name := range names {
-    if ch := c.GetSub(name); ch != nil {
-      channels.Store(name, ch)
-      chans = append(chans, ch.Chan())
-    }
+		if ch := c.GetSub(name); ch != nil {
+			channels.Store(name, ch)
+			chans = append(chans, ch.Chan())
+		}
 	}
 	out := make(chan ChannelMsg[T], chanLen)
 	stopChan := utils.SelectN(out, chans...)
 	return &MergedChan[T]{
-    client: c,
-		channels: channels,
-		isPub:    false,
-		out:      out,
+		client:    c,
+		channels:  channels,
+		isPub:     false,
+		out:       out,
 		stopChans: []chan<- utils.Unit{stopChan},
 	}
 }
@@ -482,18 +482,18 @@ func (c *Client[T]) MergeSubChans(chanLen uint32, subChans ...*Channel[T]) *Merg
 	channels := utils.NewSyncMap[string, *Channel[T]]()
 	var chans []<-chan ChannelMsg[T]
 	for _, ch := range subChans {
-    if ch.client == c && !ch.isPub && !ch.IsClosed() {
-      channels.Store(ch.name, ch)
-      chans = append(chans, ch.Chan())
-    }
+		if ch.client == c && !ch.isPub && !ch.IsClosed() {
+			channels.Store(ch.name, ch)
+			chans = append(chans, ch.Chan())
+		}
 	}
 	out := make(chan ChannelMsg[T], chanLen)
 	stopChan := utils.SelectN(out, chans...)
 	return &MergedChan[T]{
-    client: c,
-		channels: channels,
-		isPub:    false,
-		out:      out,
+		client:    c,
+		channels:  channels,
+		isPub:     false,
+		out:       out,
 		stopChans: []chan<- utils.Unit{stopChan},
 	}
 }
@@ -508,30 +508,30 @@ func (c *Client[T]) MergeAllSubs(chanLen uint32) *MergedChan[T] {
 	}
 	channels := utils.NewSyncMap[string, *Channel[T]]()
 	var chans []<-chan ChannelMsg[T]
-  if c.isLite {
-    c.network.channels.Range(func(chName string, nCh *Channel[T]) bool {
-      if _, loaded := nCh.subChans.Load(c); loaded {
-        if ch := nCh.cloneWithClient(c); ch != nil {
-          channels.Store(chName, ch)
-          chans = append(chans, ch.Chan())
-        }
-      }
-      return true
-    })
-  } else {
-    c.subs.Range(func(name string, ch *Channel[T]) bool {
-      channels.Store(name, ch)
-      chans = append(chans, ch.Chan())
-      return true
-    })
-  }
+	if c.isLite {
+		c.network.channels.Range(func(chName string, nCh *Channel[T]) bool {
+			if _, loaded := nCh.subChans.Load(c); loaded {
+				if ch := nCh.cloneWithClient(c); ch != nil {
+					channels.Store(chName, ch)
+					chans = append(chans, ch.Chan())
+				}
+			}
+			return true
+		})
+	} else {
+		c.subs.Range(func(name string, ch *Channel[T]) bool {
+			channels.Store(name, ch)
+			chans = append(chans, ch.Chan())
+			return true
+		})
+	}
 	out := make(chan ChannelMsg[T], chanLen)
 	stopChan := utils.SelectN(out, chans...)
 	return &MergedChan[T]{
-    client: c,
-		channels: channels,
-		isPub:    false,
-		out:      out,
+		client:    c,
+		channels:  channels,
+		isPub:     false,
+		out:       out,
 		stopChans: []chan<- utils.Unit{stopChan},
 	}
 }
@@ -546,7 +546,7 @@ func (c *Client[T]) MergeAllSubs(chanLen uint32) *MergedChan[T] {
 // chan won't be removed from the list; the only effect is no messages will be
 // received from that channel on the output chan.
 type MergedChan[T any] struct {
-  client *Client[T]
+	client    *Client[T]
 	channels  *utils.SyncMap[string, *Channel[T]]
 	isPub     bool
 	out       chan ChannelMsg[T]
@@ -554,13 +554,13 @@ type MergedChan[T any] struct {
 	isStopped atomic.Bool
 	// No mutex is used since nothing is ever added to the struct fields; the
 	// isStopped atomic can handle synchronization of closing stopChan.
-  stopChansMtx sync.RWMutex
-  stopChans []chan<- utils.Unit
+	stopChansMtx sync.RWMutex
+	stopChans    []chan<- utils.Unit
 }
 
 // Client returns the client associated with the MergedChan.
 func (mc *MergedChan[T]) Client() *Client[T] {
-  return mc.client
+	return mc.client
 }
 
 // Channels returns the list of channels associated with the merged chan.
@@ -585,9 +585,9 @@ func (mc *MergedChan[T]) Chan() <-chan ChannelMsg[T] {
 // Nothing is returned, even if all the channels are closed (nothing is done if
 // this is the case).
 func (mc *MergedChan[T]) Pub(t T) {
-  if !mc.isPub {
-    return
-  }
+	if !mc.isPub {
+		return
+	}
 	mc.channels.Range(func(_ string, ch *Channel[T]) bool {
 		ch.Pub(t)
 		return true
@@ -599,14 +599,14 @@ func (mc *MergedChan[T]) Pub(t T) {
 // the same as the MergedChan's client, if it's not a pub channel, or if it is
 // closed. Does nothing if the MergedChan is not pub.
 func (mc *MergedChan[T]) AddPubs(pubChans ...*Channel[T]) {
-  if !mc.isPub {
-    return
-  }
-  for _, ch := range pubChans {
-    if ch.client == mc.client && ch.isPub && !ch.IsClosed() {
-      mc.channels.LoadOrStore(ch.name, ch)
-    }
-  }
+	if !mc.isPub {
+		return
+	}
+	for _, ch := range pubChans {
+		if ch.client == mc.client && ch.isPub && !ch.IsClosed() {
+			mc.channels.LoadOrStore(ch.name, ch)
+		}
+	}
 }
 
 // RemovePubs removes the specified channels from the list, if they exist.
@@ -629,26 +629,26 @@ func (mc *MergedChan[T]) RemovePubs(names ...string) {
 // (uses utils.SelectN under the hood), with the most efficient being adding
 // channels in multiples of the highest utils.Select* function.
 func (mc *MergedChan[T]) AddSubs(subChans ...*Channel[T]) {
-  if mc.isPub || mc.IsStopped() {
-    return
-  }
-  chans := make([]<-chan ChannelMsg[T], 0, len(subChans))
-  for _, ch := range subChans {
-    if ch.client == mc.client && !ch.isPub && !ch.IsClosed() {
-      if _, loaded := mc.channels.LoadOrStore(ch.name, ch); !loaded {
-        chans = append(chans, ch.Chan())
-      }
-    }
-  }
-  if len(chans) == 0 {
-    return
-  }
-  mc.stopChansMtx.Lock()
-  if mc.IsStopped() {
-    return
-  }
-  mc.stopChans = append(mc.stopChans, utils.SelectN(mc.out, chans...))
-  mc.stopChansMtx.Unlock()
+	if mc.isPub || mc.IsStopped() {
+		return
+	}
+	chans := make([]<-chan ChannelMsg[T], 0, len(subChans))
+	for _, ch := range subChans {
+		if ch.client == mc.client && !ch.isPub && !ch.IsClosed() {
+			if _, loaded := mc.channels.LoadOrStore(ch.name, ch); !loaded {
+				chans = append(chans, ch.Chan())
+			}
+		}
+	}
+	if len(chans) == 0 {
+		return
+	}
+	mc.stopChansMtx.Lock()
+	if mc.IsStopped() {
+		return
+	}
+	mc.stopChans = append(mc.stopChans, utils.SelectN(mc.out, chans...))
+	mc.stopChansMtx.Unlock()
 }
 
 // IsStopped returns whether the merged chan is stopped or not.
@@ -665,11 +665,11 @@ func (mc *MergedChan[T]) Stop() {
 	if mc.isStopped.Swap(true) {
 		return
 	}
-  mc.stopChansMtx.Lock()
-  for _, ch := range mc.stopChans {
-    close(ch)
-  }
-  mc.stopChansMtx.Unlock()
+	mc.stopChansMtx.Lock()
+	for _, ch := range mc.stopChans {
+		close(ch)
+	}
+	mc.stopChansMtx.Unlock()
 	close(mc.stopChan)
 }
 
@@ -706,8 +706,8 @@ type Channel[T any] struct {
 	subChan  chan ChannelMsg[T]
 	subChans *utils.SyncMap[*Client[T], chan ChannelMsg[T]]
 
-  multiplePubs bool
-  pubCount *atomic.Int32
+	multiplePubs bool
+	pubCount     *atomic.Int32
 
 	// The exclusive write lock is held whenever it's time to close the Channel.
 	// It is used to close all the subChans chans so nothing is sent over a
@@ -739,7 +739,7 @@ func (ch *Channel[T]) MultiplePubs() bool {
 
 // IsPub returns true if the channel is a pub channel.
 func (ch *Channel[T]) IsPub() bool {
-  return ch.isPub
+	return ch.isPub
 }
 
 // Pub publishes to the channel, returning false if the channel is closed or it
@@ -755,7 +755,7 @@ func (ch *Channel[T]) Pub(t T) bool {
 	}
 	msg := ChannelMsg[T]{channel: ch, val: t}
 	ch.subChans.Range(func(_ *Client[T], c chan ChannelMsg[T]) bool {
-    // NOTE: See close(c) in Channel.unsub
+		// NOTE: See close(c) in Channel.unsub
 		select {
 		case c <- msg:
 		default:
@@ -767,7 +767,7 @@ func (ch *Channel[T]) Pub(t T) bool {
 
 // Unsub unsubscribes the client from the channel.
 func (ch *Channel[T]) Unsub() {
-  ch.unsub(true)
+	ch.unsub(true)
 }
 
 // If true, the chanMtx read lock will be held. Passing false is useful
@@ -782,23 +782,23 @@ func (ch *Channel[T]) unsub(lock bool) {
 		return
 	}
 	ch.client.subs.Delete(ch.name)
-  if lock {
-    ch.chanMtx.RLock()
-    defer ch.chanMtx.RUnlock()
-  }
-  /*
-	// Only close the chan if the channel is still open (chan isn't/will be
-	// closed) to avoid double close (done in Channel.Close)
-	if !ch.isClosed.Load() {
+	if lock {
+		ch.chanMtx.RLock()
+		defer ch.chanMtx.RUnlock()
 	}
-  */
-  // NOTE: There is no locking to sync the channel close here and the write in
-  // Channel.Pub because I am betting based on the internals of sync.Map, the
-  // assumption I have of the speed of select, and my assumption on the time it
-  // will take to reach this point in this function from the LoadAndDelete
-  // above that there won't be an issue with sending on a closed channel.
-  // I may die on this hill :|, but hopefully not :)
-  close(c)
+	/*
+		// Only close the chan if the channel is still open (chan isn't/will be
+		// closed) to avoid double close (done in Channel.Close)
+		if !ch.isClosed.Load() {
+		}
+	*/
+	// NOTE: There is no locking to sync the channel close here and the write in
+	// Channel.Pub because I am betting based on the internals of sync.Map, the
+	// assumption I have of the speed of select, and my assumption on the time it
+	// will take to reach this point in this function from the LoadAndDelete
+	// above that there won't be an issue with sending on a closed channel.
+	// I may die on this hill :|, but hopefully not :)
+	close(c)
 }
 
 // Close closes the channel if this instance is pub, returning true if this
@@ -806,19 +806,19 @@ func (ch *Channel[T]) unsub(lock bool) {
 // this instance isn't pub, or if it's multipub and there are more pubs.
 func (ch *Channel[T]) Close() bool {
 	// Don't execute if the channel still has more pubs or is already closed
-  // (hence the checked swap).
+	// (hence the checked swap).
 	if !ch.isPub || ch.pubCount.Add(-1) > 0 {
 		return false
-  } else if ch.isClosed.Swap(true) {
-    return false
-  }
+	} else if ch.isClosed.Swap(true) {
+		return false
+	}
 
 	ch.network.channels.Delete(ch.name)
 	ch.client.pubs.Delete(ch.name)
 	ch.chanMtx.Lock()
 	// Go through and close all the chans while holding the write lock
 	ch.subChans.Range(func(client *Client[T], c chan ChannelMsg[T]) bool {
-    client.unsub(ch.name, false)
+		client.unsub(ch.name, false)
 		return true
 	})
 	ch.chanMtx.Unlock()
@@ -863,33 +863,33 @@ func (ch *Channel[T]) newSub(client *Client[T], chanLen uint32) (*Channel[T], bo
 		return nil, false
 	}
 	subChan, loaded := ch.subChans.LoadOrStore(client, make(chan ChannelMsg[T], chanLen))
-  retCh := ch.clone()
-  retCh.client, retCh.isPub, retCh.subChan = client, false, subChan
-  return retCh, !loaded
+	retCh := ch.clone()
+	retCh.client, retCh.isPub, retCh.subChan = client, false, subChan
+	return retCh, !loaded
 }
 
 // Returns nil if the client isn't subbed to the channel, otherwise, returns a
 // new channel instance with the client and its subChan. Basically the same as
 // Channel.newSub but doesn't make a new sub if the client isn't subbed.
 func (ch *Channel[T]) cloneWithClient(client *Client[T]) *Channel[T] {
-  ch.chanMtx.RLock()
-  defer ch.chanMtx.RUnlock()
-  subChan, loaded := ch.subChans.Load(client)
-  if !loaded {
-    return nil
-  }
-  retCh := ch.clone()
-  retCh.client, retCh.isPub, retCh.subChan = client, false, subChan
-  return retCh
+	ch.chanMtx.RLock()
+	defer ch.chanMtx.RUnlock()
+	subChan, loaded := ch.subChans.Load(client)
+	if !loaded {
+		return nil
+	}
+	retCh := ch.clone()
+	retCh.client, retCh.isPub, retCh.subChan = client, false, subChan
+	return retCh
 }
 
 // Clones the channel without the client, isPub, and subChan being set.
 func (ch *Channel[T]) clone() *Channel[T] {
-  return &Channel[T]{
-    network: ch.network,
-    name: ch.name,
-    isClosed: ch.isClosed,
-    subChans: ch.subChans,
-    chanMtx: ch.chanMtx,
-  }
+	return &Channel[T]{
+		network:  ch.network,
+		name:     ch.name,
+		isClosed: ch.isClosed,
+		subChans: ch.subChans,
+		chanMtx:  ch.chanMtx,
+	}
 }
