@@ -45,7 +45,11 @@ type Network[T any] struct {
 	channels *utils.SyncMap[string, *channel[T]]
 	// Holds the clients that were created to be subbed. If a client unsubs from
 	// all, they are removed from this list. If a client subs to all after not
-	// being subbed to all, there are placed in postSubAllClients
+	// being subbed to all, there are placed in postSubAllClients.
+	// This is done because if a client subbing to all after creation was added
+	// to subAllClients, it could end up receiving double messages, missing
+	// messages, extraneous set lookups would be required, etc (depending on how
+	// it is implemented). This was what was came up with.
 	subAllClients     *utils.SyncSet[*Client[T]]
 	postSubAllClients *utils.SyncSet[*Client[T]]
 }
@@ -241,7 +245,7 @@ func (c *Client[T]) NewSub(name string) (SubChannel[T], error) {
 
 // Sub is an alias for Client.NewSub.
 func (c *Client[T]) Sub(name string) (SubChannel[T], error) {
-  return c.NewSub(name)
+	return c.NewSub(name)
 }
 
 // NewSubs attempts to subscribe the the channels with the given names. Returns

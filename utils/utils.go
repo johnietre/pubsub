@@ -267,9 +267,9 @@ func (s *SyncSet[T]) Range(f func(T) bool) {
 }
 
 // Unit is an empty struct (struct{}).
-type Unit struct{}
+type Unit = struct{}
 
-// NOTE: For the rest of the code contains a number of Select* functions for
+// NOTE: The rest of the code contains a number of Select* functions for
 // selecting over a number of channels. Technically, the reflect.Select
 // function could be used to select over an arbitrary number of channels, but,
 // to the best of my knowledge, this is not optimal (see https://www.reddit.com/r/golang/comments/7iw9s6/selecting_from_an_array_of_channels/).
@@ -286,7 +286,8 @@ type Unit struct{}
 // of c after the returned channel is used and attempting read l messages from
 // c. This functionality is in all Select* functions, and is spread across
 // their respective number of channels (e.g., for Select4, this is done for
-// each of the 4 passed channels).
+// each of the 4 passed channels). Afterwards, the `out` chan passed to the
+// function is closed.
 func Select1[T any](c <-chan T, out chan<- T) chan<- Unit {
 	stopChan := make(chan Unit, 1)
 	go func() {
@@ -1366,11 +1367,11 @@ func select12[T any](cs [12]<-chan T, out chan<- T, stopChan chan Unit) {
 }
 
 // SelectN selects over n channels and sends all output to out. Uses
-// Select[1,2,3] under the hood. If the number of channels to select over is
-// already known, it is more effecient to call one of the other select methods
-// like Select2 or Select3 since the number of goroutines spawned is always
-// either (N - 1) / S + 1 + 2 (where N = the number of chans passed and S is
-// the highest number of channels that can be passed to a given Select*
+// Select[1,2,3,...] under the hood. If the number of channels to select over
+// is already known, it is more effecient to call one of the other select
+// methods like Select2 or Select3 since the number of goroutines spawned is
+// always either (N - 1) / S + 1 + 2 (where N = the number of chans passed and
+// S is the highest number of channels that can be passed to a given Select*
 // function [currently 12, i.e., Select12]).
 func SelectN[T any](out chan<- T, chans ...<-chan T) chan<- Unit {
 	stopChan, stopChans := make(chan Unit, 1), make([]chan Unit, 0)
